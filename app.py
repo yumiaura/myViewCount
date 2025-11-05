@@ -1,13 +1,22 @@
+from __future__ import annotations
 from flask import Flask, send_file, request
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from peewee import *
 from datetime import datetime, timedelta
 from PIL import Image, ImageDraw
 import io
-import time
-from collections import defaultdict
 import re
 
 app = Flask(__name__)
+
+# Initialize rate limiter
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["1024 per day", "64 per hour"],
+    storage_uri="memory://",
+)
 
 # Database setup
 db = SqliteDatabase('profiles.db')
@@ -27,24 +36,6 @@ try:
     db.create_tables([Profile], safe=True)
 except Exception as e:
     print(f"Database error: {e}")
-
-# Rate limiting implementation
-rate_limits = defaultdict(list)
-MAX_REQUESTS_PER_MINUTE = 30
-
-def is_rate_limited(ip_address):
-    """Check if an IP is rate limited"""
-    now = time.time()
-    # Remove requests older than 1 minute
-    rate_limits[ip_address] = [req_time for req_time in rate_limits[ip_address] if now - req_time < 60]
-    
-    # Check if limit exceeded
-    if len(rate_limits[ip_address]) >= MAX_REQUESTS_PER_MINUTE:
-        return True
-    
-    # Add current request
-    rate_limits[ip_address].append(now)
-    return False
 
 # Security: Validate username format
 def is_valid_username(username):
@@ -91,15 +82,11 @@ def get_unique_ips_count(username, start_date, end_date):
         return 0
 
 @app.route('/<username>/last_month')
+@limiter.limit("30 per minute")
 def get_profile_image_last_month(username):
     # Validate username
     if not is_valid_username(username):
         return "Invalid username", 400
-    
-    # Check rate limiting
-    ip_address = request.remote_addr
-    if is_rate_limited(ip_address):
-        return "Rate limit exceeded. Please try again later.", 429
     
     # Get current time
     now = datetime.now()
@@ -124,7 +111,7 @@ def get_profile_image_last_month(username):
     
     # Log the access - create a new record every time
     try:
-        # Validate IP address
+        ip_address = request.remote_addr
         if not ip_address:
             ip_address = "unknown"
         Profile.create(username=username, addr=ip_address)
@@ -134,15 +121,11 @@ def get_profile_image_last_month(username):
     return send_file(img_bytes, mimetype='image/png')
 
 @app.route('/<username>/last_week')
+@limiter.limit("30 per minute")
 def get_profile_image_last_week(username):
     # Validate username
     if not is_valid_username(username):
         return "Invalid username", 400
-    
-    # Check rate limiting
-    ip_address = request.remote_addr
-    if is_rate_limited(ip_address):
-        return "Rate limit exceeded. Please try again later.", 429
     
     # Get current time
     now = datetime.now()
@@ -162,7 +145,7 @@ def get_profile_image_last_week(username):
     
     # Log the access - create a new record every time
     try:
-        # Validate IP address
+        ip_address = request.remote_addr
         if not ip_address:
             ip_address = "unknown"
         Profile.create(username=username, addr=ip_address)
