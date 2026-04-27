@@ -1,6 +1,9 @@
 import requests
 from PIL import Image
 import io
+import logging
+
+logger = logging.getLogger(__name__)
 
 def fetch_and_display_image(username, period):
     """
@@ -20,19 +23,19 @@ def fetch_and_display_image(username, period):
             
             # Display the image
             image.show()
-            print(f"Displaying image for {username}/{period}")
-            print(f"Image size: {image.size}")
+            logger.info("Displaying image for %s/%s", username, period)
+            logger.info("Image size: %s", image.size)
             return image
         else:
-            print(f"Error fetching image: {response.status_code}")
+            logger.error("Error fetching image: status_code=%s", response.status_code)
             return None
             
-    except Exception as e:
-        print(f"Error: {e}")
+    except requests.RequestException:
+        logger.exception("Network error while fetching image for %s/%s", username, period)
         return None
 
 # Example usage
 if __name__ == "__main__":
     # Fetch and display images for different users and periods
-    print("Fetching last month image for user1...")
+    logger.info("Fetching last month image for user1...")
     fetch_and_display_image("user1", "last_month")
