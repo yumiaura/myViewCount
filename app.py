@@ -6,9 +6,11 @@ from peewee import *
 from datetime import datetime, timedelta
 from PIL import Image, ImageDraw
 import io
+import logging
 import re
 
 app = Flask(__name__)
+logger = logging.getLogger(__name__)
 
 # Initialize rate limiter
 limiter = Limiter(
@@ -34,8 +36,8 @@ class Profile(db.Model):
 try:
     db.connect()
     db.create_tables([Profile], safe=True)
-except Exception as e:
-    print(f"Database error: {e}")
+except PeeweeException:
+    logger.exception("Database initialization error")
 
 # Security: Validate username format
 def is_valid_username(username):
@@ -77,8 +79,8 @@ def get_unique_ips_count(username, start_date, end_date):
                         (Profile.created_at < end_date))
                  .scalar())
         return query if query is not None else 0
-    except Exception as e:
-        print(f"Database query error: {e}")
+    except PeeweeException:
+        logger.exception("Database query error for username=%s", username)
         return 0
 
 @app.route('/<username>/last_month')
@@ -90,18 +92,13 @@ def get_profile_image_last_month(username):
     
     # Get current time
     now = datetime.now()
-    
-    # Calculate the start of last month
-    if now.month == 1:
-        start_date = now.replace(year=now.year - 1, month=12)
+
+    # Use month boundaries to avoid invalid dates on short months.
+    end_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if end_date.month == 1:
+        start_date = end_date.replace(year=end_date.year - 1, month=12)
     else:
-        start_date = now.replace(month=now.month - 1)
-    
-    # Calculate the end of last month
-    if start_date.month == 12:
-        end_date = start_date.replace(year=start_date.year + 1, month=1)
-    else:
-        end_date = start_date.replace(month=start_date.month + 1)
+        start_date = end_date.replace(month=end_date.month - 1)
     
     # Count unique IP addresses for this period
     unique_ips_count = get_unique_ips_count(username, start_date, end_date)
@@ -115,8 +112,8 @@ def get_profile_image_last_month(username):
         if not ip_address:
             ip_address = "unknown"
         Profile.create(username=username, addr=ip_address)
-    except Exception as e:
-        print(f"Error creating database record: {e}")
+    except PeeweeException:
+        logger.exception("Error creating database record for username=%s", username)
     
     return send_file(img_bytes, mimetype='image/png')
 
@@ -149,8 +146,8 @@ def get_profile_image_last_week(username):
         if not ip_address:
             ip_address = "unknown"
         Profile.create(username=username, addr=ip_address)
-    except Exception as e:
-        print(f"Error creating database record: {e}")
+    except PeeweeException:
+        logger.exception("Error creating database record for username=%s", username)
     
     return send_file(img_bytes, mimetype='image/png')
 
